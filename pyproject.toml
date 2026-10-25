@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=84.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openitrack"
+version = "1.0.0"
+description = "Webcam / phone head and eye tracking for simulators, opentrack-compatible"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "mediapipe>=1.1.1",
+    "numpy>=2.5",
+    "aiohttp>=3.14",
+    "cryptography>=50",
+    "zeroconf>=0.151",
+    "sv-ttk>=2.6",
+    "segno>=1.6",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9.1"]
+build = ["pyinstaller>=6.22"]
+
+[project.scripts]
+openitrack = "openitrack.cli:main"
+
+[project.gui-scripts]
+openitrack-gui = "openitrack.gui:main"
+
+[tool.setuptools.packages.find]
+include = ["openitrack*"]
+
+[tool.setuptools.package-data]
+openitrack = ["web/*.html", "web/*.js", "web/*.png", "web/vendor/**/*", "models/*.task", "assets/*.ico"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

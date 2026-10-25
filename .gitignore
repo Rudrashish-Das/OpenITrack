@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.egg-info/
+build/
+dist/
+scratch_models/
+openitrack/models/
+.pytest_cache/
+packaging/version_info.txt
+openitrack/web/vendor/

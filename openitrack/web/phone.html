@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<title>OpenITrack Phone</title>
+<link rel="icon" type="image/png" href="/icon.png">
+<link rel="apple-touch-icon" href="/icon.png">
+<style>
+  :root { --bg:#0e1116; --card:#161b22; --line:#232a33; --fg:#e7ebf0; --muted:#8b95a3;
+          --ok:#3ecf8e; --warn:#f2b84b; --bad:#ef5d5d; --accent:#4c8dff; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; min-height:100%; background:var(--bg); color:var(--fg);
+    font: 16px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  main { display:flex; flex-direction:column; align-items:center; gap:14px; padding:16px; }
+  h1 { font-size:20px; margin:4px 0 0; display:flex; align-items:center; gap:10px; }
+  h1 img { width:32px; height:32px; border-radius:8px; }
+  .card { width:100%; max-width:480px; background:var(--card); border:1px solid var(--line);
+          border-radius:12px; padding:14px; }
+  .row { display:flex; justify-content:space-between; gap:8px; }
+  .muted { color:var(--muted); font-size:14px; }
+  .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; background:var(--muted); }
+  .dot.ok { background:var(--ok); } .dot.warn { background:var(--warn); } .dot.bad { background:var(--bad); }
+  .code { font: 700 44px/1.1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          letter-spacing:.18em; text-align:center; margin:10px 0 6px; user-select:all; }
+  .center { text-align:center; }
+  .notice { color:var(--warn); font-size:14px; }
+  .stage { position:relative; width:100%; max-width:480px; }
+  .stage video { display:block; width:100%; border-radius:12px; transform:scaleX(-1); background:#000; }
+  /* Drawn in the video's own pixels and mirrored the same way, so marks line up. */
+  .stage canvas { position:absolute; inset:0; width:100%; height:100%; transform:scaleX(-1); pointer-events:none; }
+  .switch { display:flex; align-items:center; gap:10px; width:100%; max-width:480px; font-size:15px; }
+  .switch input { width:20px; height:20px; accent-color:var(--accent); }
+  button { appearance:none; border:0; border-radius:10px; padding:14px 18px; font-size:17px; font-weight:600;
+    background:var(--accent); color:#fff; width:100%; max-width:480px; }
+  button.secondary { background:#232a33; color:var(--fg); }
+  button.link { background:none; color:var(--muted); font-weight:400; font-size:14px; padding:6px; }
+  #blackout { position:fixed; inset:0; background:#000; display:none; align-items:center; justify-content:center;
+    color:#333; font-size:14px; z-index:10; }
+  ol { margin:6px 0 0; padding-left:20px; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1><img src="/icon.png" alt="">OpenITrack Phone</h1>
+
+  <section id="pairCard" class="card center" hidden>
+    <div class="muted">Pairing code</div>
+    <div id="code" class="code">······</div>
+    <div>On your PC, type this code in the OpenITrack window and press Enter.</div>
+    <p id="pairNote" class="muted">The code never leaves this phone. Only someone who can read it can pair.</p>
+  </section>
+
+  <section class="card">
+    <div class="row"><span><span id="pcDot" class="dot"></span>PC link</span><span id="pcText" class="muted">starting…</span></div>
+    <div class="row"><span><span id="faceDot" class="dot"></span>Face</span><span id="faceText" class="muted">–</span></div>
+    <div class="row"><span>Tracking rate</span><span id="fpsText" class="muted">–</span></div>
+  </section>
+
+  <button id="start" hidden>Start tracking</button>
+  <button id="repair" hidden>Pair again</button>
+  <div class="stage" id="stage" hidden>
+    <video id="video" playsinline muted></video>
+    <canvas id="overlay"></canvas>
+  </div>
+  <label class="switch" id="overlayRow" hidden>
+    <input type="checkbox" id="overlayToggle" checked> Show what the tracker sees (face mesh, eyes, head direction)
+  </label>
+  <button id="dim" class="secondary" hidden>Black screen (saves battery)</button>
+
+  <section class="card muted">
+    Mount the phone near your monitor with the front camera facing you, roughly at eye level.
+    Keep this page open; the screen stays on while tracking.
+    <ol>
+      <li>Press <b>Start tracking</b> and allow the camera.</li>
+      <li>Look at the middle of your monitor and press your recenter shortcut on the PC
+          (Ctrl+Shift+F9 by default).</li>
+    </ol>
+    <p>Privacy: video never leaves this phone. Only head-angle numbers are sent, encrypted, to your paired PC.</p>
+  </section>
+  <button id="forget" class="link" hidden>Forget this PC</button>
+</main>
+<div id="blackout">tap to show</div>
+<script type="module" src="/app.js"></script>
+</body>
+</html>
