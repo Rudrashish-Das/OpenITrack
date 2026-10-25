@@ -21,6 +21,10 @@ datas = [
     (str(PKG / "web" / "vendor"), "openitrack/web/vendor"),
     (str(PKG / "models" / "face_landmarker.task"), "openitrack/models"),
     (str(PKG / "assets" / "icon.ico"), "openitrack/assets"),
+    # opentrack's TrackIR/FreeTrack client DLLs for the direct game output. Kept as
+    # plain data (not binaries) so PyInstaller doesn't scan or move them: games load
+    # them from this folder, which the registry points at while tracking.
+    (str(PKG / "clients"), "openitrack/clients"),
 ]
 datas += collect_data_files("sv_ttk")  # Windows 11 style theme for the window
 datas += collect_data_files("mediapipe", excludes=["**/*.pyc", "**/testdata/**"])

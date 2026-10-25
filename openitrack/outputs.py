@@ -1,4 +1,5 @@
-"""Pose outputs: opentrack UDP (for TrackIR/FreeTrack games) and mouse-look."""
+"""Pose outputs: TrackIR/FreeTrack games (built in, or through opentrack over UDP)
+and mouse-look."""
 
 from __future__ import annotations
 
@@ -8,6 +9,7 @@ import socket
 import struct
 import sys
 
+from . import freetrack
 from .config import OutputConfig
 from .mapping import Pose
 
@@ -15,6 +17,8 @@ log = logging.getLogger(__name__)
 
 
 class Output:
+    game = ""  # name of the game reading the pose, when the output knows it
+
     def send(self, pose: Pose) -> None:
         raise NotImplementedError
 
@@ -54,6 +58,36 @@ class OpenTrackUDP(Output):
         self.sock.close()
 
 
+class DirectOutput(Output):
+    """TrackIR / FreeTrack games without opentrack: the FreeTrack shared memory
+    opentrack's "freetrack 2.0 Enhanced" output writes, with the registry pointing
+    games at our bundled copy of opentrack's client DLLs while it runs."""
+
+    def __init__(self):
+        self.shm = freetrack.SharedMemory()
+        self.writer = freetrack.FreeTrackWriter(self.shm.heap, freetrack.load_game_keys())
+        self.registry = freetrack.RegistryRedirect(freetrack.CLIENTS_DIR)
+        try:
+            self.registry.apply()
+        except OSError as exc:
+            # Games still work if the registry already points at opentrack's DLLs.
+            log.warning("Couldn't point TrackIR/FreeTrack games at OpenITrack: %s", exc)
+
+    @property
+    def game(self) -> str:
+        return self.writer.game
+
+    def send(self, pose: Pose) -> None:
+        with self.shm.lock():
+            self.writer.write(pose)
+
+    def close(self) -> None:
+        with self.shm.lock():
+            self.writer.clear()
+        self.shm.close()
+        self.registry.restore()
+
+
 class MouseOutput(Output):
     """Relative mouse movement that follows yaw/pitch. For games without
     TrackIR support that use mouse-look (view follows the cursor delta)."""
@@ -79,7 +113,15 @@ class MouseOutput(Output):
 
 def build_outputs(cfg: OutputConfig) -> list[Output]:
     outs: list[Output] = []
-    if cfg.opentrack:
+    if cfg.game == "direct":
+        try:
+            outs.append(DirectOutput())
+            log.info("Sending to TrackIR/FreeTrack games directly")
+        except (OSError, RuntimeError) as exc:
+            log.error("Direct game output not available: %s", exc)
+    else:
+        freetrack.restore_stale()
+    if cfg.game == "opentrack":
         outs.append(OpenTrackUDP(cfg.opentrack_host, cfg.opentrack_port))
         log.info("Sending to opentrack at %s:%d (UDP)", cfg.opentrack_host, cfg.opentrack_port)
     if cfg.mouse:

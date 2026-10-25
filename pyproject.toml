@@ -32,7 +32,7 @@ openitrack-gui = "openitrack.gui:main"
 include = ["openitrack*"]
 
 [tool.setuptools.package-data]
-openitrack = ["web/*.html", "web/*.js", "web/*.png", "web/vendor/**/*", "models/*.task", "assets/*.ico"]
+openitrack = ["web/*.html", "web/*.js", "web/*.png", "web/vendor/**/*", "models/*.task", "assets/*.ico", "clients/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

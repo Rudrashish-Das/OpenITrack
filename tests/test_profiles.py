@@ -172,7 +172,7 @@ def test_set_values_fills_in_the_commented_setting(cfg_path):
     cf.profiles.set_apps("X", ["a.exe", 'odd "name".exe'])
     text = cf.profiles.path("X").read_text(encoding="utf-8")
     out = text.split("[output]")[1]
-    assert "mouse = true" in out and "# mouse = " not in out and "# opentrack = true" in out
+    assert "mouse = true" in out and "# mouse = " not in out and "# game = \"direct\"" in out
     prof = cf.profiles.load("X")
     assert prof.apps == ["a.exe", 'odd "name".exe'] and prof.settings["output"] == {"mouse": True}
 

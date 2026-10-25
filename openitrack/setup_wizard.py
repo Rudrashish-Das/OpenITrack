@@ -25,6 +25,10 @@ log = logging.getLogger("openitrack.setup")
 
 OK, WARN, BAD, INFO, IDLE = "#3ecf8e", "#f2b84b", "#ef5d5d", "#4c8dff", "#8b95a3"
 OPENTRACK_URL = "https://github.com/opentrack/opentrack/releases"
+# [output] game choices, as shown here and in the window's Settings tab.
+GAME_OUTPUT_CHOICES = (("direct", "Direct (built-in, recommended)"),
+                       ("opentrack", "Through opentrack (UDP over network)"),
+                       ("off", "Off"))
 # Camera picker: this many snapshots at full size in one row; more are shown half size.
 CAMERAS_FULL_SIZE = 2
 CAMERAS_PER_ROW_SMALL = 3
@@ -631,35 +635,72 @@ class SetupWizard:
     def s_game(self) -> None:
         self.title.configure(text="Connect your game")
         b = self.body
+        self.ensure_tracking()
         self.text(b, "Most sims (MSFS, DCS, X-Plane, IL-2, Elite Dangerous, iRacing, ETS2 and more) support "
-                     "TrackIR/FreeTrack head tracking. OpenITrack reaches them through opentrack, a free app:")
-        status = self.check_row(b, "opentrack")
-        steps = ("1.  Install opentrack and open it.",
-                 "2.  Input: “UDP over network” (port 4242).   Output: “freetrack 2.0 Enhanced”.",
-                 "3.  Filter: “Accela” with low smoothing, or none.  Then press Start.",
-                 "4.  In your sim, turn on TrackIR / head tracking.")
-        for line in steps:
-            self.text(b, line, pady=(0, 2))
-        row = ttk.Frame(b)
+                     "TrackIR/FreeTrack head tracking. OpenITrack talks to them directly, no other app needed.")
+        choice = tk.StringVar(value=self.app.cf.config.output.game)
+        for value, text in GAME_OUTPUT_CHOICES:
+            ttk.Radiobutton(b, text=text, value=value, variable=choice).pack(anchor="w", pady=1)
+
+        direct = ttk.Frame(b)
+        for line in ("1.  Keep OpenITrack tracking, then start your sim (games look for head tracking "
+                     "when they start).",
+                     "2.  In your sim, turn on TrackIR / head tracking."):
+            self.text(direct, line, pady=(0, 2))
+        game = self.check_row(direct, "Game")
+        clash = self.check_row(direct, "opentrack")
+
+        via_ot = ttk.Frame(b)
+        status = self.check_row(via_ot, "opentrack")
+        for line in ("1.  Install opentrack and open it.",
+                     "2.  Input: “UDP over network” (port 4242).   Output: “freetrack 2.0 Enhanced”.",
+                     "3.  Filter: “Accela” with low smoothing, or none.  Then press Start.",
+                     "4.  In your sim, turn on TrackIR / head tracking."):
+            self.text(via_ot, line, pady=(0, 2))
+        row = ttk.Frame(via_ot)
         row.pack(anchor="w", pady=(10, 0))
         ttk.Button(row, text="Get opentrack", command=lambda: webbrowser.open(OPENTRACK_URL)).pack(side="left")
+
         mouse = tk.BooleanVar(value=self.app.cf.config.output.mouse)
-        ttk.Checkbutton(b, text="My game has no head tracking: move the mouse instead (mouse-look)",
-                        variable=mouse, style="Switch.TCheckbutton",
-                        command=lambda: self.app.save("output", {"mouse": mouse.get()})).pack(anchor="w", pady=(14, 0))
+        mouse_box = ttk.Checkbutton(b, text="My game has no head tracking: move the mouse instead (mouse-look)",
+                                    variable=mouse, style="Switch.TCheckbutton",
+                                    command=lambda: self.app.save("output", {"mouse": mouse.get()}))
+        mouse_box.pack(anchor="w", pady=(14, 0))
+
+        def show(*_):
+            value = choice.get()
+            if value != self.app.cf.config.output.game:
+                self.app.save("output", {"game": value})
+            for frame, on in ((direct, value == "direct"), (via_ot, value == "opentrack")):
+                if on:
+                    frame.pack(anchor="w", fill="x", pady=(10, 0), before=mouse_box)
+                else:
+                    frame.pack_forget()
+        choice.trace_add("write", show)
+        show()
+
         st = self._step_state
         st["next_check"] = 0.0
+        st["opentrack"] = False
 
         def tick():
+            name = self.snap().get("game")
+            self.set_check(game, OK if name else IDLE, f"{name} is reading head tracking" if name
+                           else "start your sim to check (not every game reports in)")
+            ot = st["opentrack"]
+            if choice.get() == "direct":
+                self.set_check(clash, WARN if ot else OK,
+                               "running: close it, both would steer the view" if ot else "not needed")
+            else:
+                self.set_check(status, OK if ot else WARN,
+                               "running" if ot else "not running yet (start it before your game)")
             if time.monotonic() < st["next_check"]:
                 return
             st["next_check"] = time.monotonic() + 2.0
 
             def work():
                 running = opentrack_running()
-                self.app.ui_queue.put(lambda: self.frame.winfo_exists() and self.set_check(
-                    status, OK if running else WARN,
-                    "running" if running else "not running yet (start it before your game)"))
+                self.app.ui_queue.put(lambda: st.__setitem__("opentrack", running))
             threading.Thread(target=work, daemon=True).start()
         self.poll(tick)
 
@@ -699,7 +740,9 @@ class SetupWizard:
     def s_done(self) -> None:
         self.title.configure(text="You're all set")
         b = self.body
-        self.text(b, "OpenITrack is tracking now. Start opentrack, then your sim.")
+        self.text(b, "OpenITrack is tracking now. Start opentrack, then your sim."
+                  if self.app.cf.config.output.game == "opentrack" else
+                  "OpenITrack is tracking now. Start your sim and turn on its TrackIR / head tracking.")
         self.text(b, "Tips:", pady=(8, 2))
         for line in ("•  Recenter whenever you shift in your seat.",
                      "•  Keep OpenITrack open while you play; it uses very little of your PC.",

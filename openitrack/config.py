@@ -116,7 +116,11 @@ exponent = 1.0
 invert = false
 
 [output]
-opentrack = true             # send to opentrack's "UDP over network" input
+# How TrackIR / FreeTrack games (MSFS, DCS, X-Plane, IL-2, iRacing...) get the pose:
+#   "direct"    built in: games read it straight from OpenITrack (no other app needed)
+#   "opentrack" send it to opentrack's "UDP over network" input instead
+#   "off"       neither
+game = "direct"
 opentrack_host = "127.0.0.1"
 opentrack_port = 4242
 mouse = false                # move the mouse instead (games with mouse-look only)
@@ -191,6 +195,8 @@ setup_done = false     # false = show the step-by-step setup when the window ope
 # Webcam pixel formats for [source] format, as the FOURCC to ask the camera for
 # (None: don't ask, the driver picks).
 CAMERA_FORMATS = {"mjpg": "MJPG", "yuy2": "YUY2", "auto": None}
+# [output] game: how TrackIR / FreeTrack games get the pose.
+GAME_OUTPUTS = ("direct", "opentrack", "off")
 
 
 @dataclass
@@ -262,7 +268,7 @@ class AxesConfig:
 
 @dataclass
 class OutputConfig:
-    opentrack: bool = True
+    game: str = "direct"
     opentrack_host: str = "127.0.0.1"
     opentrack_port: int = 4242
     mouse: bool = False
@@ -400,6 +406,8 @@ def _validate(cfg: Config) -> None:
         raise ConfigError("gaze ranges must be positive")
     if not 10 <= cfg.overlay.screen_degrees <= 170:
         raise ConfigError("overlay.screen_degrees must be between 10 and 170")
+    if cfg.output.game not in GAME_OUTPUTS:
+        raise ConfigError("output.game must be " + ", ".join(f'"{g}"' for g in GAME_OUTPUTS))
     if not 8 <= cfg.overlay.size <= 400:
         raise ConfigError("overlay.size must be between 8 and 400 pixels")
 
@@ -411,9 +419,21 @@ def load_toml(text: str) -> dict[str, Any]:
         raise ConfigError(f"Invalid TOML: {exc}") from exc
 
 
+def _migrate(data: dict[str, Any]) -> dict[str, Any]:
+    """Older files have `opentrack = true/false` in [output] instead of `game`."""
+    out = data.get("output")
+    if not isinstance(out, dict) or "opentrack" not in out:
+        return data
+    out = dict(out)
+    legacy = out.pop("opentrack")
+    if "game" not in out and isinstance(legacy, bool):
+        out["game"] = "opentrack" if legacy else "off"
+    return {**data, "output": out}
+
+
 def config_from_data(data: dict[str, Any]) -> Config:
     cfg = Config()
-    _merge(cfg, data, "")
+    _merge(cfg, _migrate(data), "")
     _validate(cfg)
     return cfg
 

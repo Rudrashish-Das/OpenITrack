@@ -1,6 +1,49 @@
+import sys
 import tkinter as tk
+import uuid
 
 import pytest
+
+from openitrack import freetrack
+
+if sys.platform == "win32":
+    import winreg
+
+TEST_REGISTRY_ROOT = r"Software\OpenITrackTests"
+
+
+def delete_registry_tree(key: str) -> None:
+    """Delete an HKCU key and everything under it, if it exists."""
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key, 0, winreg.KEY_ALL_ACCESS) as k:
+            while True:
+                try:
+                    sub = winreg.EnumKey(k, 0)
+                except OSError:
+                    break
+                delete_registry_tree(f"{key}\\{sub}")
+        winreg.DeleteKey(winreg.HKEY_CURRENT_USER, key)
+    except FileNotFoundError:
+        pass
+
+
+@pytest.fixture(autouse=True)
+def no_real_game_output(monkeypatch, tmp_path):
+    """Keep tests away from the real TrackIR/FreeTrack registry entries and shared
+    memory: the direct game output uses throwaway names in every test."""
+    tag = uuid.uuid4().hex
+    root = f"{TEST_REGISTRY_ROOT}\\{tag}"
+    monkeypatch.setattr(freetrack, "HEAP_NAME", f"OpenITrackTest_{tag}")
+    monkeypatch.setattr(freetrack, "MUTEX_NAME", f"OpenITrackTestMutex_{tag}")
+    monkeypatch.setattr(freetrack, "REGISTRY_KEYS", (f"{root}\\NPClient Location", f"{root}\\FreeTrackClient"))
+    monkeypatch.setattr(freetrack, "registry_backup_path", lambda: tmp_path / "registry-backup.json")
+    yield root
+    if sys.platform == "win32":
+        delete_registry_tree(root)
+        try:
+            winreg.DeleteKey(winreg.HKEY_CURRENT_USER, TEST_REGISTRY_ROOT)   # only if empty
+        except OSError:
+            pass
 
 
 @pytest.fixture

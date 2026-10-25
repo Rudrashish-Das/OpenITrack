@@ -33,7 +33,7 @@ from .hotkeys import HOLD_ACTIONS, MAX_JOYSTICKS, InputPoller, _key_name, parse_
 from .profiles import PROFILE_SECTIONS, app_key
 from .scrollarea import ScrollArea
 from .reset import delete_user_data, saved_items
-from .setup_wizard import SetupWizard
+from .setup_wizard import GAME_OUTPUT_CHOICES, SetupWizard
 
 log = logging.getLogger("openitrack.gui")
 
@@ -787,23 +787,25 @@ class App:
         right.grid(row=1, column=1, sticky="nsew")
         out = ttk.LabelFrame(left, text="Send head movement to", padding=box)
         out.pack(fill="x")
-        self.ot_var = tk.BooleanVar(value=c.output.opentrack)
-        ttk.Checkbutton(out, text="opentrack (TrackIR / FreeTrack games)", variable=self.ot_var,
-                        style="Switch.TCheckbutton").grid(row=0, column=0, columnspan=4, sticky="w")
-        ttk.Label(out, text="Address").grid(row=1, column=0, sticky="w", pady=4)
+        ttk.Label(out, text="TrackIR / FreeTrack games").grid(row=0, column=0, columnspan=4, sticky="w")
+        self.game_out_var = tk.StringVar(value=c.output.game)
+        for r, (value, text) in enumerate(GAME_OUTPUT_CHOICES, start=1):
+            ttk.Radiobutton(out, text=text, value=value, variable=self.game_out_var).grid(
+                row=r, column=0, columnspan=4, sticky="w", padx=(8, 0), pady=1)
+        ttk.Label(out, text="opentrack address").grid(row=4, column=0, sticky="w", pady=4)
         self.ot_host = tk.StringVar(value=c.output.opentrack_host)
-        ttk.Entry(out, textvariable=self.ot_host, width=16).grid(row=1, column=1, sticky="w", padx=6)
-        ttk.Label(out, text="Port").grid(row=1, column=2, sticky="w")
+        ttk.Entry(out, textvariable=self.ot_host, width=16).grid(row=4, column=1, sticky="w", padx=6)
+        ttk.Label(out, text="Port").grid(row=4, column=2, sticky="w")
         self.ot_port = tk.StringVar(value=str(c.output.opentrack_port))
-        ttk.Entry(out, textvariable=self.ot_port, width=7).grid(row=1, column=3, sticky="w", padx=6)
+        ttk.Entry(out, textvariable=self.ot_port, width=7).grid(row=4, column=3, sticky="w", padx=6)
         self.mouse_var = tk.BooleanVar(value=c.output.mouse)
         ttk.Checkbutton(out, text="Mouse-look (games without head tracking)", variable=self.mouse_var,
-                        style="Switch.TCheckbutton").grid(row=2, column=0, columnspan=4, sticky="w", pady=(10, 0))
-        ttk.Label(out, text="Pixels per degree").grid(row=3, column=0, columnspan=2, sticky="w", pady=4)
+                        style="Switch.TCheckbutton").grid(row=5, column=0, columnspan=4, sticky="w", pady=(10, 0))
+        ttk.Label(out, text="Pixels per degree").grid(row=6, column=0, columnspan=2, sticky="w", pady=4)
         self.mouse_ppd = tk.StringVar(value=str(c.output.mouse_pixels_per_degree))
-        ttk.Entry(out, textvariable=self.mouse_ppd, width=7).grid(row=3, column=2, sticky="w")
+        ttk.Entry(out, textvariable=self.mouse_ppd, width=7).grid(row=6, column=2, sticky="w")
         ttk.Button(out, text="Save", style="Accent.TButton", command=self.save_outputs).grid(
-            row=3, column=3, sticky="e", padx=(6, 0))
+            row=6, column=3, sticky="e", padx=(6, 0))
 
         trk = ttk.LabelFrame(right, text="Tracking", padding=box)
         trk.pack(fill="x")
@@ -957,6 +959,7 @@ class App:
         c = self.cf.config
         self.source_var.set(c.source.type)
         self._show_configured_camera()
+        self.game_out_var.set(c.output.game)
         self.mouse_var.set(c.output.mouse)
         self.autostart_var.set(c.ui.autostart)
         self.blendshapes_var.set(self.cf.base.tracking.blendshapes)
@@ -1052,7 +1055,7 @@ class App:
         except ValueError:
             messagebox.showerror("OpenITrack", "Port must be a whole number and pixels per degree a number.")
             return
-        if self.save("output", {"opentrack": self.ot_var.get(), "opentrack_host": self.ot_host.get().strip(),
+        if self.save("output", {"game": self.game_out_var.get(), "opentrack_host": self.ot_host.get().strip(),
                                 "opentrack_port": port, "mouse": self.mouse_var.get(),
                                 "mouse_pixels_per_degree": ppd}):
             log.info("Output settings saved")
@@ -1143,7 +1146,7 @@ class App:
             return
         self.profile_var.set(self.cf.profile or DEFAULT_PROFILE)
         c = self.cf.config
-        self.ot_var.set(c.output.opentrack)
+        self.game_out_var.set(c.output.game)
         self.ot_host.set(c.output.opentrack_host)
         self.ot_port.set(str(c.output.opentrack_port))
         self.mouse_var.set(c.output.mouse)

@@ -10,7 +10,7 @@ Head tracking plus eye-assisted view for flight, racing and space sims, using a 
 - **Guided calibration** (about 40 s) measures your eye range and comfortable head turn, so it fits you without hand-tuning.
 - **Per-game profiles** that switch by themselves when the game comes to the front.
 - **Global shortcuts** on keyboard, mouse side buttons or **joystick/HOTAS buttons**, with confirmation beeps.
-- Works with **any game that supports TrackIR or FreeTrack** (DCS, MSFS, X-Plane, IL-2, Elite Dangerous, ETS2/ATS, Assetto Corsa, rFactor 2, iRacing, War Thunder and more) through [opentrack](https://github.com/opentrack/opentrack). There's also a **mouse-look** output for games without head-tracking support.
+- Works with **any game that supports TrackIR or FreeTrack** (DCS, MSFS, X-Plane, IL-2, Elite Dangerous, ETS2/ATS, Assetto Corsa, rFactor 2, iRacing, War Thunder and more), directly: no [opentrack](https://github.com/opentrack/opentrack) or other app needed (sending to opentrack is still an option). There's also a **mouse-look** output for games without head-tracking support.
 
 ```mermaid
 flowchart LR
@@ -24,8 +24,8 @@ flowchart LR
         filter[Filter] --> curves[Curves] --> eye[Eye-assist]
     end
 
-    eye -- UDP --> opentrack[opentrack]
-    opentrack --> game([Game<br/><i>TrackIR / FreeTrack</i>])
+    eye -- shared memory --> game([Game<br/><i>TrackIR / FreeTrack</i>])
+    eye -.->|or UDP| opentrack[opentrack] -.-> game
     eye -.->|optional| mouse([Mouse-look])
 ```
 
@@ -57,7 +57,31 @@ python -m venv .venv
 
 The face model (3.7 MB) downloads automatically on first run.
 
-### One-time opentrack setup
+### Games
+
+Nothing to set up: OpenITrack talks to TrackIR and FreeTrack games itself. Start
+OpenITrack (and tracking) **before** the game, since games look for head tracking
+when they start, then turn on TrackIR / head tracking in the game's options.
+
+How it works: while tracking, OpenITrack writes the pose to the FreeTrack shared
+memory (`FT_SharedMem`, the same data opentrack's *freetrack 2.0 Enhanced* output
+writes) and points the per-user registry entries games read
+(`HKCU\Software\NaturalPoint\NATURALPOINT\NPClient Location` and
+`HKCU\Software\Freetrack\FreeTrackClient`) at its bundled copy of opentrack's
+`NPClient(64).dll` / `FreeTrackClient(64).dll` (`openitrack/clients`, see the
+`NOTICE.txt` there). When tracking stops or OpenITrack exits it puts the previous
+values back, so a real TrackIR or an opentrack install keeps working; after a crash
+the next start restores them. Close opentrack while using this, or both would steer
+the view.
+
+This is `[output] game = "direct"`, the default (Settings tab › *Send head movement
+to*). Older settings files with `opentrack = true` keep sending to opentrack until
+you pick *Direct* there.
+
+### Optional: through opentrack
+
+Pick *Through opentrack* in the Settings tab (`[output] game = "opentrack"`) to use
+opentrack's filters or outputs, then:
 
 1. Install [opentrack](https://github.com/opentrack/opentrack/releases) (free).
 2. **Input**: `UDP over network`. Click the hammer icon and set the port to `4242`.
@@ -209,8 +233,8 @@ The config file is `%APPDATA%\OpenITrack\config.toml`. Every setting is commente
 | Symptom | Fix |
 |---|---|
 | "Camera … only returned black frames" | Open the privacy shutter. Check Windows Settings → Privacy & security → Camera → *Let desktop apps access your camera*. Close other apps using the camera. |
-| Nothing moves in game | Check that opentrack is started and its octopus moves. Check that the game's TrackIR/head-tracking option is on. |
-| Octopus moves, game doesn't | Use opentrack output `freetrack 2.0 Enhanced` and start opentrack **before** the game. |
+| Nothing moves in game | Start OpenITrack's tracking **before** the game and check that the game's TrackIR/head-tracking option is on. Close opentrack (with the *Direct* output it would fight OpenITrack). The setup guide's *Connect your game* step shows when a TrackIR game has connected. |
+| Through opentrack: octopus moves, game doesn't | Use opentrack output `freetrack 2.0 Enhanced` and start opentrack **before** the game. |
 | Phone page says "looking for the PC" / "connecting" | Firewall: allow OpenITrack/Python on private networks. Make sure both devices are on the same Wi‑Fi, not a guest network (those isolate devices). |
 | `openitrack.local` doesn't open on the phone | Use the IP-address link printed under it. Some Android versions can't resolve `.local` names. |
 | Phone says "this PC no longer recognises this phone" | It was revoked, or the PC's pairing file was reset. Tap **Pair again**. |
@@ -256,5 +280,7 @@ Without make:
 | `openitrack/devices.py` | Paired phones, secrets protected with DPAPI |
 | `openitrack/mdns.py` | `openitrack.local` advertisement |
 | `openitrack/web/` | Phone page: `app.js` (UI and tracking), `frame.js` (pose message), `link.js` (secure link) |
-| `openitrack/outputs.py` | opentrack UDP packet and mouse-look |
+| `openitrack/outputs.py` | Game outputs: direct, opentrack UDP packet, mouse-look |
+| `openitrack/freetrack.py` | Direct output: FreeTrack shared memory, game keys, registry redirect (with restore) |
+| `openitrack/clients/` | opentrack's TrackIR/FreeTrack client DLLs and game list, bundled for the direct output |
 | `openitrack/profiles.py` | Per-game profiles layered over the config; `foreground.py` finds the program in front |

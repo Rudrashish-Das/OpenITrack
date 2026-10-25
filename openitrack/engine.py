@@ -432,6 +432,7 @@ class Engine:
             "overlay": self._dot_on,
             "flags": self._flags(held),
             "last_action": getattr(self, "_last_action", None),
+            "game": next((o.game for o in self.outputs if o.game), ""),
         }
         c = p.center
         if c is not None:

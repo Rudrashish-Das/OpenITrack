@@ -1,0 +1,51 @@
+Game client libraries from opentrack
+====================================
+
+The files in this folder are unmodified copies from the opentrack project
+(https://github.com/opentrack/opentrack, commit 655c812024a6, bin/ and settings/):
+
+  NPClient.dll, NPClient64.dll         TrackIR-protocol client loaded by games
+                                       (source: contrib/npclient/npclient.c,
+                                       originally by uglyDwarf of linux-track)
+  freetrackclient.dll,
+  freetrackclient64.dll                FreeTrack-protocol client loaded by games
+                                       (source: freetrackclient/freetrackclient.c)
+  supported-games.csv                  game list with the per-game keys
+                                       ("facetracknoir supported games.csv")
+
+OpenITrack points the TrackIR and FreeTrack registry entries at this folder
+while its "Direct" game output runs, and puts the pose in the FreeTrack shared
+memory these libraries read.
+
+opentrack
+---------
+
+Copyright (c) 2012-2016 Stanislaw Halik
+Copyright (c) 2013-2015, 2017 Stanislaw Halik <sthalik@misaki.pl>
+Copyright (c) 2015 Wim Vriend
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+FaceTrackNoIR (opentrack is a fork of it)
+-----------------------------------------
+
+Original project's site located at <http://facetracknoir.sourceforge.net/home/default.htm>
+
+Copyright (c) 2015, Wim Vriend
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+Warranty
+--------
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
