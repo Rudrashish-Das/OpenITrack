@@ -6,6 +6,8 @@ FreeTrackClient(64).dll from the folder the registry names. Those libraries
 memory. This module writes that memory the way opentrack's "freetrack 2.0
 Enhanced" output does (proto-ft/ftnoir_protocol_ft.cpp) and points the registry
 at the bundled folder while it runs, putting the previous values back afterwards.
+For the few games that also want a running TrackIR.exe, it starts OpenITrack's
+stand-in (packaging/trackir_dummy) from the same folder.
 """
 
 from __future__ import annotations
@@ -15,6 +17,8 @@ import ctypes
 import json
 import logging
 import math
+import os
+import subprocess
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -40,6 +44,9 @@ if sys.platform == "win32":
     _k32.WaitForSingleObject.restype = wintypes.DWORD
     _k32.ReleaseMutex.argtypes = (wintypes.HANDLE,)
     _k32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    _k32.CreateToolhelp32Snapshot.argtypes = (wintypes.DWORD, wintypes.DWORD)
+    _k32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    _k32.Process32FirstW.argtypes = _k32.Process32NextW.argtypes = (wintypes.HANDLE, ctypes.c_void_p)
 
 log = logging.getLogger(__name__)
 
@@ -47,6 +54,9 @@ HEAP_NAME = "FT_SharedMem"
 MUTEX_NAME = "FT_Mutext"  # sic: the name every FreeTrack client uses
 CLIENTS_DIR = Path(__file__).resolve().parent / "clients"
 GAMES_CSV = CLIENTS_DIR / "supported-games.csv"
+# OpenITrack's stand-in TrackIR.exe, built from packaging/trackir_dummy by
+# packaging/build.py (`make trackir` when running from source).
+TRACKIR_EXE = CLIENTS_DIR / "TrackIR.exe"
 
 # HKCU keys whose "Path" value tells games where the client DLLs are.
 NPCLIENT_KEY = r"Software\NaturalPoint\NATURALPOINT\NPClient Location"
@@ -59,6 +69,8 @@ _PAGE_READWRITE = 0x04
 _FILE_MAP_WRITE = 0x0002
 _INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
 _WAIT_OBJECT_0, _WAIT_ABANDONED = 0x0, 0x80
+_TH32CS_SNAPPROCESS = 0x2
+_CREATE_NO_WINDOW = 0x08000000
 
 
 class FTData(ctypes.Structure):
@@ -300,3 +312,82 @@ class RegistryRedirect:
         atexit.unregister(self.restore)
         _restore(self.root, backup)
         self.backup_path.unlink(missing_ok=True)
+
+
+class _ProcessEntry(ctypes.Structure):
+    """PROCESSENTRY32W."""
+    _fields_ = [("dwSize", ctypes.c_uint32), ("cntUsage", ctypes.c_uint32), ("th32ProcessID", ctypes.c_uint32),
+                ("th32DefaultHeapID", ctypes.c_size_t), ("th32ModuleID", ctypes.c_uint32),
+                ("cntThreads", ctypes.c_uint32), ("th32ParentProcessID", ctypes.c_uint32),
+                ("pcPriClassBase", ctypes.c_long), ("dwFlags", ctypes.c_uint32),
+                ("szExeFile", ctypes.c_wchar * 260)]
+
+
+def process_ids(name: str) -> list[int]:
+    """IDs of the running processes whose exe is called `name` (any case)."""
+    snap = _k32.CreateToolhelp32Snapshot(_TH32CS_SNAPPROCESS, 0)
+    if not snap or snap == _INVALID_HANDLE_VALUE:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        entry = _ProcessEntry(dwSize=ctypes.sizeof(_ProcessEntry))
+        ids = []
+        ok = _k32.Process32FirstW(snap, ctypes.byref(entry))
+        while ok:
+            if entry.szExeFile.lower() == name.lower():
+                ids.append(entry.th32ProcessID)
+            ok = _k32.Process32NextW(snap, ctypes.byref(entry))
+        return ids
+    finally:
+        _k32.CloseHandle(snap)
+
+
+class TrackIRProcess:
+    """Keeps OpenITrack's stand-in TrackIR.exe running, for games that only use
+    TrackIR while a process with that name exists. It isn't started when another
+    one (NaturalPoint's, opentrack's) already runs, and only the one started here
+    is ever stopped. It is given our process ID and quits when we exit, so a
+    crash doesn't leave it behind."""
+
+    def __init__(self, exe: Path | None = None):
+        self.exe = exe or TRACKIR_EXE
+        self._proc: subprocess.Popen | None = None
+
+    @property
+    def pid(self) -> int | None:
+        return self._proc.pid if self._proc else None
+
+    def start(self) -> bool:
+        """Start it; False if it wasn't (another one runs, or it isn't built)."""
+        if self._proc is not None:
+            return True
+        others = process_ids(self.exe.name)
+        if others:
+            log.info("%s is already running (process %s); not starting OpenITrack's", self.exe.name,
+                     ", ".join(map(str, others)))
+            return False
+        if not self.exe.is_file():
+            log.warning("%s isn't there (run `make trackir` when running from source); games that need a "
+                        "running TrackIR.exe won't see one", self.exe)
+            return False
+        try:
+            self._proc = subprocess.Popen([str(self.exe), str(os.getpid())], stdin=subprocess.DEVNULL,
+                                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                          cwd=self.exe.parent, creationflags=_CREATE_NO_WINDOW)
+        except OSError as exc:
+            log.warning("Couldn't start %s: %s", self.exe, exc)
+            return False
+        atexit.register(self.stop)
+        log.info("Started %s (process %d) for games that look for it", self.exe.name, self._proc.pid)
+        return True
+
+    def stop(self) -> None:
+        proc, self._proc = self._proc, None
+        if proc is None:
+            return
+        atexit.unregister(self.stop)
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(2)
+            except subprocess.TimeoutExpired:
+                log.warning("%s (process %d) didn't stop", self.exe.name, proc.pid)

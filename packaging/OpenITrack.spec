@@ -21,7 +21,8 @@ datas = [
     (str(PKG / "web" / "vendor"), "openitrack/web/vendor"),
     (str(PKG / "models" / "face_landmarker.task"), "openitrack/models"),
     (str(PKG / "assets" / "icon.ico"), "openitrack/assets"),
-    # opentrack's TrackIR/FreeTrack client DLLs for the direct game output. Kept as
+    # opentrack's TrackIR/FreeTrack client DLLs for the direct game output, and our
+    # stand-in TrackIR.exe (build.py compiles it into this folder first). Kept as
     # plain data (not binaries) so PyInstaller doesn't scan or move them: games load
     # them from this folder, which the registry points at while tracking.
     (str(PKG / "clients"), "openitrack/clients"),

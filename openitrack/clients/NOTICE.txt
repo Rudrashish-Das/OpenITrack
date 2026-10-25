@@ -17,6 +17,10 @@ OpenITrack points the TrackIR and FreeTrack registry entries at this folder
 while its "Direct" game output runs, and puts the pose in the FreeTrack shared
 memory these libraries read.
 
+TrackIR.exe (in the built app) is not from opentrack: it is OpenITrack's own
+stand-in, built from packaging/trackir_dummy/TrackIR.cs. It only waits for
+OpenITrack to exit, for games that look for a running TrackIR.exe.
+
 opentrack
 ---------
 

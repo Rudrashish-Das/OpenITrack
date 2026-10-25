@@ -37,6 +37,8 @@ def no_real_game_output(monkeypatch, tmp_path):
     monkeypatch.setattr(freetrack, "MUTEX_NAME", f"OpenITrackTestMutex_{tag}")
     monkeypatch.setattr(freetrack, "REGISTRY_KEYS", (f"{root}\\NPClient Location", f"{root}\\FreeTrackClient"))
     monkeypatch.setattr(freetrack, "registry_backup_path", lambda: tmp_path / "registry-backup.json")
+    # No stand-in TrackIR.exe unless a test brings its own (see test_trackir_process.py).
+    monkeypatch.setattr(freetrack, "TRACKIR_EXE", tmp_path / "TrackIR-not-built.exe")
     yield root
     if sys.platform == "win32":
         delete_registry_tree(root)

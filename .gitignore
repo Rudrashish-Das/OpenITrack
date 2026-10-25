@@ -8,3 +8,4 @@ openitrack/models/
 .pytest_cache/
 packaging/version_info.txt
 openitrack/web/vendor/
+openitrack/clients/TrackIR.exe

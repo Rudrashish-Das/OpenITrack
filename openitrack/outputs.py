@@ -61,9 +61,10 @@ class OpenTrackUDP(Output):
 class DirectOutput(Output):
     """TrackIR / FreeTrack games without opentrack: the FreeTrack shared memory
     opentrack's "freetrack 2.0 Enhanced" output writes, with the registry pointing
-    games at our bundled copy of opentrack's client DLLs while it runs."""
+    games at our bundled copy of opentrack's client DLLs while it runs, and our
+    stand-in TrackIR.exe running if `trackir_process`."""
 
-    def __init__(self):
+    def __init__(self, trackir_process: bool = True):
         self.shm = freetrack.SharedMemory()
         self.writer = freetrack.FreeTrackWriter(self.shm.heap, freetrack.load_game_keys())
         self.registry = freetrack.RegistryRedirect(freetrack.CLIENTS_DIR)
@@ -72,6 +73,12 @@ class DirectOutput(Output):
         except OSError as exc:
             # Games still work if the registry already points at opentrack's DLLs.
             log.warning("Couldn't point TrackIR/FreeTrack games at OpenITrack: %s", exc)
+        self.trackir = freetrack.TrackIRProcess() if trackir_process else None
+        if self.trackir:
+            try:
+                self.trackir.start()
+            except OSError as exc:
+                log.warning("Couldn't check for a running TrackIR.exe: %s", exc)
 
     @property
     def game(self) -> str:
@@ -86,6 +93,8 @@ class DirectOutput(Output):
             self.writer.clear()
         self.shm.close()
         self.registry.restore()
+        if self.trackir:
+            self.trackir.stop()
 
 
 class MouseOutput(Output):
@@ -115,7 +124,7 @@ def build_outputs(cfg: OutputConfig) -> list[Output]:
     outs: list[Output] = []
     if cfg.game == "direct":
         try:
-            outs.append(DirectOutput())
+            outs.append(DirectOutput(cfg.trackir_process))
             log.info("Sending to TrackIR/FreeTrack games directly")
         except (OSError, RuntimeError) as exc:
             log.error("Direct game output not available: %s", exc)

@@ -74,6 +74,13 @@ values back, so a real TrackIR or an opentrack install keeps working; after a cr
 the next start restores them. Close opentrack while using this, or both would steer
 the view.
 
+A few games only turn TrackIR on while a program called `TrackIR.exe` runs, so
+OpenITrack also starts its own tiny stand-in (`openitrack/clients/TrackIR.exe`,
+source in `packaging/trackir_dummy`: no window, it just waits for OpenITrack to
+exit) while tracking, and you'll see it in Task Manager. It isn't started if a
+NaturalPoint or opentrack `TrackIR.exe` is already running. Turn it off with
+`trackir_process = false` in `[output]`.
+
 This is `[output] game = "direct"`, the default (Settings tab › *Send head movement
 to*). Older settings files with `opentrack = true` keep sending to opentrack until
 you pick *Direct* there.
@@ -254,6 +261,7 @@ make setup   # create .venv and install with dev + build extras
 make test    # run pytest (make test ARGS="-k phone")
 make run     # start the tracker
 make calibrate  # start the tracker with the calibration overlay
+make trackir # build the stand-in TrackIR.exe (gui/run/calibrate/build do it too)
 make build   # run the tests, then build the exe and release zip
 make build-force  # build even if the tests fail
 make clean   # remove build output and caches
@@ -283,4 +291,5 @@ Without make:
 | `openitrack/outputs.py` | Game outputs: direct, opentrack UDP packet, mouse-look |
 | `openitrack/freetrack.py` | Direct output: FreeTrack shared memory, game keys, registry redirect (with restore) |
 | `openitrack/clients/` | opentrack's TrackIR/FreeTrack client DLLs and game list, bundled for the direct output |
+| `packaging/trackir_dummy/` | Source of our stand-in `TrackIR.exe` (built into `clients/` with Windows' own `csc.exe`), kept running by the direct output for games that look for it |
 | `openitrack/profiles.py` | Per-game profiles layered over the config; `foreground.py` finds the program in front |

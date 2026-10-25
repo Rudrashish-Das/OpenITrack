@@ -121,6 +121,7 @@ invert = false
 #   "opentrack" send it to opentrack's "UDP over network" input instead
 #   "off"       neither
 game = "direct"
+trackir_process = true       # with "direct": keep a TrackIR.exe running (a few games look for it)
 opentrack_host = "127.0.0.1"
 opentrack_port = 4242
 mouse = false                # move the mouse instead (games with mouse-look only)
@@ -269,6 +270,7 @@ class AxesConfig:
 @dataclass
 class OutputConfig:
     game: str = "direct"
+    trackir_process: bool = True
     opentrack_host: str = "127.0.0.1"
     opentrack_port: int = 4242
     mouse: bool = False
