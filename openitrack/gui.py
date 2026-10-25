@@ -33,7 +33,7 @@ from .hotkeys import HOLD_ACTIONS, MAX_JOYSTICKS, InputPoller, _key_name, parse_
 from .profiles import PROFILE_SECTIONS, app_key
 from .scrollarea import ScrollArea
 from .reset import delete_user_data, saved_items
-from .setup_wizard import GAME_OUTPUT_CHOICES, SetupWizard
+from .setup_wizard import SetupWizard
 
 log = logging.getLogger("openitrack.gui")
 
@@ -46,6 +46,8 @@ WEB = Path(__file__).resolve().parent / "web"
 CALIBRATION_FILE = "calibration.json"
 DEFAULT_PROFILE = "Default"
 DEFAULT_IID = "::default"   # profile names can't contain ':'
+# [output] game choices, short for the Settings tab (the setup guide explains them).
+GAME_OUTPUT_CHOICES = (("direct", "Direct (built-in)"), ("opentrack", "opentrack"), ("off", "Off"))
 
 ACTIONS = [
     ("recenter", "Recenter view"),
@@ -787,12 +789,12 @@ class App:
         right.grid(row=1, column=1, sticky="nsew")
         out = ttk.LabelFrame(left, text="Send head movement to", padding=box)
         out.pack(fill="x")
-        ttk.Label(out, text="TrackIR / FreeTrack games").grid(row=0, column=0, columnspan=4, sticky="w")
         self.game_out_var = tk.StringVar(value=c.output.game)
-        for r, (value, text) in enumerate(GAME_OUTPUT_CHOICES, start=1):
-            ttk.Radiobutton(out, text=text, value=value, variable=self.game_out_var).grid(
-                row=r, column=0, columnspan=4, sticky="w", padx=(8, 0), pady=1)
-        ttk.Label(out, text="opentrack address").grid(row=4, column=0, sticky="w", pady=4)
+        games = ttk.Frame(out)
+        games.grid(row=0, column=0, columnspan=4, sticky="w")
+        for value, text in GAME_OUTPUT_CHOICES:
+            ttk.Radiobutton(games, text=text, value=value, variable=self.game_out_var).pack(side="left", padx=(0, 10))
+        ttk.Label(out, text="Address").grid(row=4, column=0, sticky="w", pady=4)
         self.ot_host = tk.StringVar(value=c.output.opentrack_host)
         ttk.Entry(out, textvariable=self.ot_host, width=16).grid(row=4, column=1, sticky="w", padx=6)
         ttk.Label(out, text="Port").grid(row=4, column=2, sticky="w")
