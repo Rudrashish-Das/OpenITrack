@@ -1168,8 +1168,8 @@ class App:
                 created = None
         when = created.replace("T", " ") if created else None
         text = (f"Calibrated {when}." if when else
-                "Not calibrated yet. Calibrating takes about 40 seconds and fits eye-assist, "
-                "head range and the gaze dot to you.")
+                "Not calibrated yet. Calibrating takes about 45 seconds and fits eye-assist, "
+                "head range, leaning and the gaze dot to you.")
         set_options(self.cal_status, text=text)
         set_options(self.calib_lbl, text=f"Calibrated {when[:16]}" if when else "Not calibrated yet")
 

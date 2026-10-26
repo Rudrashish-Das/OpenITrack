@@ -1,4 +1,5 @@
-"""Guided calibration: neutral pose, eye range and gaze fit, comfortable head range.
+"""Guided calibration: neutral pose, eye range and gaze fit, comfortable head range,
+and how the head tips when leaning in or back.
 
 `CalibrationSession` is a time-driven state machine fed raw observations; it has
 no UI so it can be tested directly. `calibration_overlay` draws it.
@@ -27,6 +28,12 @@ MIN_GAZE_H = 0.02            # smallest believable eye travel (fraction of eye w
 MIN_GAZE_V = 0.008
 MIN_HEAD_YAW = 8.0           # smallest believable comfortable head turn (deg)
 MIN_HEAD_PITCH = 5.0
+MIN_LEAN_CM = 3.0            # smallest lean that measures anything
+# Lean compensation limits, per cm of lean. Real coupling is about 1 deg/cm;
+# anything far beyond is a deliberate head movement, not part of leaning.
+MAX_LEAN_DEG_PER_CM = 3.0
+MAX_LEAN_CM_PER_CM = 0.5
+LEAN_AXES = ("yaw", "pitch", "roll", "x", "y")
 BLINK_LIMIT = 0.45
 
 
@@ -42,6 +49,10 @@ class Calibration:
     head_yaw_range: float | None = None   # comfortable turn while still seeing the screen
     head_pitch_range: float | None = None
     gaze_fit: dict | None = None          # the gaze dot's eye map (gaze_model.fit_eye_map)
+    # Per cm of lean (z), how much the other axes also moved while looking at the
+    # same point: deg for yaw/pitch/roll, cm for x/y. Subtracted while tracking so
+    # leaning only moves z.
+    lean: dict | None = None
 
     def center_observation(self) -> Observation | None:
         if not self.center:
@@ -82,13 +93,15 @@ class Calibration:
                 f"U {f(self.gaze_up)} D {f(self.gaze_down)} | "
                 f"head yaw +/-{f(self.head_yaw_range, ' deg')} pitch +/-{f(self.head_pitch_range, ' deg')}"
                 + (f" | gaze fit {self.gaze_fit['points']} dots, error {self.gaze_fit['rms']:.2f}"
-                   if self.gaze_fit else ""))
+                   if self.gaze_fit else "")
+                + (f" | lean pitch {self.lean['pitch']:+.1f} deg/cm" if self.lean else ""))
 
 
 @dataclass(frozen=True)
 class Step:
-    kind: str            # "center", "gaze" or "head"
-    direction: str       # "center", "left", "right", "up", "down", or a corner like "up-left"
+    kind: str            # "center", "gaze", "head" or "lean"
+    direction: str       # "center", "left", "right", "up", "down", a corner like "up-left",
+                         # or "in"/"out" for lean
     title: str
     hint: str
     settle: float        # seconds to get into position before measuring
@@ -114,12 +127,19 @@ def _head(direction: str) -> Step:
                 0.4, 2.6, 15)
 
 
+def _lean(direction: str) -> Step:
+    title = "Lean IN toward the screen" if direction == "in" else "Lean BACK"
+    return Step("lean", direction, title,
+                "Like reaching for a switch. Keep looking at the dot, then hold.", 1.0, 2.0, 15)
+
+
 STEPS: tuple[Step, ...] = (
     Step("center", "center", "Look at the dot in the CENTER",
          "Sit how you normally play. Keep still.", 1.5, 1.2, 15),
     _gaze("left"), _gaze("right"), _gaze("up"), _gaze("down"),
     _gaze("up-left"), _gaze("up-right"), _gaze("down-right"), _gaze("down-left"),
     _head("left"), _head("right"), _head("up"), _head("down"),
+    _lean("in"), _lean("out"),
 )
 
 # Where the dot is drawn, as (x, y) in [-1, 1] screen coordinates (+y = up).
@@ -155,6 +175,7 @@ class CalibrationSession:
         self.live: Observation | None = None
         self._after_message = "settle"
         self._head_extremes: dict[str, float] = {}
+        self._lean_samples: list[dict[str, float]] = []  # relative poses while leaning
         # (gaze_x, gaze_y, eye_x, eye_y) per measured dot, for the gaze fit.
         self._fit_points: list[tuple[float, float, float, float]] = []
 
@@ -230,7 +251,7 @@ class CalibrationSession:
             return
 
         # collect
-        if obs is not None and (step.kind == "head" or obs.blink < BLINK_LIMIT):
+        if obs is not None and (step.kind in ("head", "lean") or obs.blink < BLINK_LIMIT):
             self.samples.append(obs)
         if elapsed >= step.collect and len(self.samples) >= step.min_samples:
             self._evaluate(step, now)
@@ -289,6 +310,10 @@ class CalibrationSession:
             self._next_step(now)
             return
 
+        if step.kind == "lean":
+            self._evaluate_lean(step, now)
+            return
+
         # head: comfortable extreme = 90th percentile in the asked direction
         axis = "yaw" if step.direction in ("left", "right") else "pitch"
         rel = np.array([relative_pose(c, o)[axis] for o in self.samples])
@@ -307,6 +332,27 @@ class CalibrationSession:
         self.result.head_pitch_range = float(np.mean(pitch)) if pitch else None
         self._next_step(now)
 
+    def _evaluate_lean(self, step: Step, now: float) -> None:
+        c = self.center
+        assert c is not None
+        rel = [relative_pose(c, o) for o in self.samples]
+        sign = 1.0 if step.direction == "in" else -1.0  # + z = toward the camera and screen
+        lean = float(np.percentile([r["z"] * sign for r in rel], 90))
+        if lean < MIN_LEAN_CM:
+            self._retry(f"Only {max(0.0, lean):.0f} cm of lean detected.", now)
+            return
+        self._lean_samples += rel
+        # Fit each axis as a straight line through the center: axis = k * z.
+        z = np.array([r["z"] for r in self._lean_samples])
+        zz = float(z @ z)
+        coupling = {}
+        for axis in LEAN_AXES:
+            limit = MAX_LEAN_CM_PER_CM if axis in ("x", "y") else MAX_LEAN_DEG_PER_CM
+            k = float(z @ np.array([r[axis] for r in self._lean_samples])) / zz
+            coupling[axis] = max(-limit, min(limit, k))
+        self.result.lean = coupling
+        self._next_step(now)
+
     # -- for the overlay -------------------------------------------------------
     def live_offset(self) -> tuple[float, float] | None:
         """Current head yaw/pitch relative to the measured center (for head steps)."""
@@ -314,3 +360,9 @@ class CalibrationSession:
             return None
         rel = relative_pose(self.center, self.live)
         return rel["yaw"], rel["pitch"]
+
+    def live_lean(self) -> float | None:
+        """Current lean in cm relative to the measured center (+ = in)."""
+        if self.live is None or self.center is None:
+            return None
+        return relative_pose(self.center, self.live)["z"]

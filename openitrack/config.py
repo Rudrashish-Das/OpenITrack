@@ -138,9 +138,11 @@ mouse_pixels_per_degree = 12.0
 [calibration]
 # Results of `openitrack calibrate` (or the calibrate hotkey) are stored next to
 # this file in calibration.json. When present they replace gaze.horizontal_range /
-# vertical_range and the yaw/pitch input_range values above.
+# vertical_range and the yaw/pitch input_range values above. use_lean cancels the
+# head tilt and shift measured while leaning in and back, so leaning only moves z.
 use_gaze = true
 use_head = true
+use_lean = true
 # Where the calibration overlay is shown: the monitor you play on, so the eye
 # targets match where you actually look.
 #   0 = primary monitor, 1, 2, 3 = monitors counted from the left
@@ -292,6 +294,7 @@ class OutputConfig:
 class CalibrationConfig:
     use_gaze: bool = True
     use_head: bool = True
+    use_lean: bool = True
     monitor: int | str = 0
 
 

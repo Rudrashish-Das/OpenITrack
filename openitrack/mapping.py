@@ -8,7 +8,7 @@ import logging
 import math
 from dataclasses import dataclass, replace
 
-from .calibration import Calibration
+from .calibration import LEAN_AXES, Calibration
 from .config import AxisConfig, Config
 from .features import Observation, median_observation, relative_pose
 from .filters import OneEuroFilter
@@ -199,6 +199,8 @@ class PosePipeline:
                     ranges[d] = measured
         self._gaze_ranges = ranges
         self._gaze_fit = cal.gaze_fit if cal is not None and self.config.calibration.use_gaze else None
+        self._lean = cal.lean if cal is not None and self.config.calibration.use_lean else None
+        self._rel_cache = None
 
     # -- commands ----------------------------------------------------------
     def recenter(self) -> None:
@@ -256,6 +258,10 @@ class PosePipeline:
         if cached is not None and cached[0] is c and cached[1] is obs:
             return cached[2]
         rel = relative_pose(c, obs)
+        if self._lean:
+            # Leaning tips and shifts the head a little; take that out so it only moves z.
+            for axis in LEAN_AXES:
+                rel[axis] -= self._lean.get(axis, 0.0) * rel["z"]
         rel["gx"] = obs.gaze_x - c.gaze_x
         rel["gy"] = obs.gaze_y - c.gaze_y
         self._rel_cache = (c, obs, rel)

@@ -8,7 +8,7 @@ Head tracking plus eye-assisted view for flight, racing and space sims, using a 
 - **Smooth at any camera rate**: games get a pose 120 times a second, like TrackIR, gliding between camera frames, so a 30 fps (or uneven) camera doesn't make the view step.
 - **Eye-assist**: look toward the edge of the screen and the view turns further, like Tobii's extended view. A deadzone lets you glance at instruments without the camera moving, and blinks are ignored.
 - **Gaze dot** (optional): a click-through ring on screen showing roughly where you're looking.
-- **Guided calibration** (about 40 s) measures your eye range and comfortable head turn, so it fits you without hand-tuning.
+- **Guided calibration** (about 45 s) measures your eye range, comfortable head turn and how your head tips when you lean, so it fits you without hand-tuning.
 - **Per-game profiles** that switch by themselves when the game comes to the front.
 - **Global shortcuts** on keyboard, mouse side buttons or **joystick/HOTAS buttons**, with confirmation beeps.
 - Works with **any game that supports TrackIR or FreeTrack** (DCS, MSFS, X-Plane, IL-2, Elite Dangerous, ETS2/ATS, Assetto Corsa, rFactor 2, iRacing, War Thunder and more), directly: no [opentrack](https://github.com/opentrack/opentrack) or other app needed (sending to opentrack is still an option). There's also a **mouse-look** output for games without head-tracking support.
@@ -144,13 +144,14 @@ OpenITrack captures keyboard shortcuts, so the game doesn't also see them. Mouse
 
 ### Calibration
 
-Run `openitrack calibrate`, or press **Ctrl+Alt+Shift+F9** while tracking. A fullscreen overlay walks you through three parts:
+Run `openitrack calibrate`, or press **Ctrl+Alt+Shift+F9** while tracking. A fullscreen overlay walks you through four parts:
 
 1. **Center**: look at the center dot while sitting how you normally play. This is your neutral pose.
 2. **Eye range**: look at dots near the left, right, top and bottom edges and in the four corners, moving only your eyes. If your head moves a lot, it asks you to redo that dot; small head movements are measured and taken out.
 3. **Head range**: turn your head left, right, up and down as far as is comfortable while you can still see the screen. That becomes "full turn" in game.
+4. **Lean**: lean in toward the screen, then back, keeping your eyes on the center dot. Leaning usually tips your head down or up a little, and with a short head range that swings the view. OpenITrack measures that and takes it out, so leaning in to read a gauge only moves you closer.
 
-The results are saved to `calibration.json` next to your config and loaded automatically. They replace the gaze ranges and the yaw/pitch `input_range`, and fit the gaze dot to all nine dots (turn the gaze or head part off under `[calibration]`). Run it again whenever your setup changes, or delete it with `openitrack calibrate --reset`. For exclusive-fullscreen games, switch to borderless or alt-tab to the desktop while calibrating, since the overlay can't draw over exclusive fullscreen.
+The results are saved to `calibration.json` next to your config and loaded automatically. They replace the gaze ranges and the yaw/pitch `input_range`, and fit the gaze dot to all nine dots (turn the gaze, head or lean part off under `[calibration]`). Run it again whenever your setup changes, or delete it with `openitrack calibrate --reset`. For exclusive-fullscreen games, switch to borderless or alt-tab to the desktop while calibrating, since the overlay can't draw over exclusive fullscreen.
 
 **Multiple monitors.** The overlay opens on your primary monitor. If you play on another one, set `monitor` under `[calibration]` so the dots are where you actually look:
 

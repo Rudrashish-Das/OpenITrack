@@ -1,8 +1,9 @@
+import numpy as np
 import pytest
 
-from openitrack.calibration import STEPS, TARGETS, Calibration, CalibrationSession
+from openitrack.calibration import MAX_LEAN_DEG_PER_CM, STEPS, TARGETS, Calibration, CalibrationSession
 from openitrack.config import Config
-from openitrack.features import Observation, angles_from_rotation, rotation_from_angles
+from openitrack.features import Observation, angles_from_rotation, relative_pose, rotation_from_angles
 from openitrack.gaze_model import TARGET_REACH, Head, eye_point, eye_point_for
 from openitrack.hotkeys import Binding, HotkeyListener, parse_binding
 from openitrack.mapping import RECENTER_FRAMES, PosePipeline
@@ -18,6 +19,19 @@ NEUTRAL = dict(yaw=5.0, pitch=-3.0, gx=0.01, gy=-0.02)
 EYES = {"left": (0.22, 0.0), "right": (-0.18, 0.0), "up": (0.0, 0.09), "down": (0.0, -0.06)}
 EYES |= {f"{v}-{h}": (EYES[h][0], EYES[v][1]) for v in ("up", "down") for h in ("left", "right")}
 HEAD = {"left": (32.0, 0.0), "right": (-28.0, 0.0), "up": (0.0, 20.0), "down": (0.0, -16.0)}
+LEAN = {"in": 8.0, "out": -6.0}   # cm along the neutral head's z (+ = toward the screen)
+# While leaning, this user's head also tips 1 deg down and drops 0.2 cm per cm of lean.
+LEAN_PITCH, LEAN_Y = -1.0, -0.2
+
+
+def leaned(t, dz, base=NEUTRAL, pitch_per_cm=LEAN_PITCH, y_per_cm=LEAN_Y):
+    """The neutral face moved dz cm along its own z, with the tip and drop that come with it."""
+    rc = rotation_from_angles(base["yaw"], base["pitch"], 0.0)
+    r = rc @ rotation_from_angles(0.0, pitch_per_cm * dz, 0.0)
+    yaw, pitch, roll = angles_from_rotation(r)
+    x, y, z = np.array([0.0, 0.0, -50.0]) + rc @ np.array([0.0, y_per_cm * dz, dz])
+    return Observation(t=t, yaw=yaw, pitch=pitch, roll=roll, x=x, y=y, z=z,
+                       gaze_x=base["gx"], gaze_y=base["gy"], blink=0.0)
 
 
 def user(session, t, head_drift=0.0):
@@ -35,6 +49,8 @@ def user(session, t, head_drift=0.0):
             dyaw, dpitch = HEAD[step.direction]
             r = rotation_from_angles(o["yaw"], o["pitch"], 0.0) @ rotation_from_angles(dyaw, dpitch, 0.0)
             o["yaw"], o["pitch"], _ = angles_from_rotation(r)
+        elif step.kind == "lean" and session.phase == "collect":
+            return leaned(t, LEAN[step.direction])
     return make_obs(t, **o)
 
 
@@ -62,6 +78,9 @@ def test_full_calibration_measures_user():
     assert r.head_yaw_range == pytest.approx(30.0)    # mean of 32 and 28
     assert r.head_pitch_range == pytest.approx(18.0)  # mean of 20 and 16
     assert r.gaze_fit["points"] == 9 and r.gaze_fit["rms"] < 0.02
+    assert r.lean["pitch"] == pytest.approx(LEAN_PITCH, abs=0.01)
+    assert r.lean["y"] == pytest.approx(LEAN_Y, abs=0.01)
+    assert all(r.lean[a] == pytest.approx(0.0, abs=0.01) for a in ("yaw", "roll", "x"))
     ranges = {d: getattr(r, f"gaze_{d}") for d in ("left", "right", "up", "down")}
     for direction, (dx, dy) in EYES.items():
         target = TARGETS[direction]
@@ -141,8 +160,34 @@ def test_steps_cover_every_direction():
     kinds = {(st.kind, st.direction) for st in STEPS}
     for d in ("left", "right", "up", "down"):
         assert ("gaze", d) in kinds and ("head", d) in kinds
+    assert ("lean", "in") in kinds and ("lean", "out") in kinds
     gaze_dots = {st.direction for st in STEPS if st.kind in ("center", "gaze")}
     assert gaze_dots == set(TARGETS) and len(gaze_dots) == 9
+
+
+def test_too_small_a_lean_is_retried_then_skipped():
+    s = CalibrationSession(0.0)
+    t, retried = 0.0, False
+    while not s.finished and t < 120:
+        t += 1 / 30
+        o = user(s, t)
+        if s.step is not None and s.step.kind == "lean":
+            o = leaned(t, 1.0 if s.step.direction == "in" else -1.0)  # barely moved
+        s.update(o, t)
+        retried |= s.phase == "message" and "cm of lean" in s.message
+    assert retried and s.phase == "done" and s.result.lean is None
+
+
+def test_lean_coupling_is_capped():
+    s = CalibrationSession(0.0)
+    t = 0.0
+    while not s.finished and t < 120:
+        t += 1 / 30
+        o = user(s, t)
+        if s.step is not None and s.step.kind == "lean" and s.phase == "collect":
+            o = leaned(t, LEAN[s.step.direction], pitch_per_cm=-6.0)  # nodding, not leaning
+        s.update(o, t)
+    assert s.result.lean["pitch"] == -MAX_LEAN_DEG_PER_CM
 
 
 # -- calibration applied to the pipeline ---------------------------------------
@@ -289,3 +334,27 @@ def test_listener_routes_and_rejects_duplicates():
     assert set(hl._polled) == {"freeze_hold", "toggle_gaze", "calibrate"}  # polled
     # "pause" duplicated F9 and was dropped; empty bindings are disabled.
     assert "pause" not in hl._registered and "pause" not in hl._polled
+
+
+def test_lean_compensation_leaves_only_z():
+    s, _ = run_session()
+    center = s.result.center_observation()
+    cfg = Config()
+    cfg.gaze.enabled = False
+    cfg.tracking.auto_center = False  # use the calibration's center
+    p = PosePipeline(cfg, s.result)
+    assert p.centered
+    lean = leaned(1.0, 10.0)
+    raw = relative_pose(center, lean)
+    assert raw["pitch"] == pytest.approx(-10.0, abs=0.1)     # what leaning looks like uncompensated
+    rel = p.raw_relative(lean)
+    assert rel["z"] == pytest.approx(10.0, abs=0.01)
+    for axis in ("yaw", "pitch", "roll", "x", "y"):
+        assert rel[axis] == pytest.approx(0.0, abs=0.05)
+    # A real nod while leaned in still comes through.
+    nod = leaned(1.0, 10.0, base={**NEUTRAL, "pitch": NEUTRAL["pitch"] + 5.0})
+    assert p.raw_relative(nod)["pitch"] == pytest.approx(5.0, abs=0.2)
+    # use_lean = false: back to the raw coupling.
+    cfg.calibration.use_lean = False
+    p.set_config(cfg)
+    assert p.raw_relative(lean)["pitch"] == pytest.approx(raw["pitch"])

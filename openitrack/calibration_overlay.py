@@ -111,7 +111,7 @@ class CalibrationOverlay:
             else:
                 remaining = max(0, math.ceil(s.INTRO_SECONDS - (now - s.phase_t)))
                 _text(img, "Calibration", cx, cy - 120 * k, 1.8 * k, FG, 2)
-                _text(img, "Follow the instructions. It takes about 40 seconds.", cx, cy - 50 * k, 0.9 * k, MUTED)
+                _text(img, "Follow the instructions. It takes about 45 seconds.", cx, cy - 50 * k, 0.9 * k, MUTED)
                 _text(img, f"Starting in {remaining}", cx, cy + 40 * k, 1.3 * k, ACCENT, 2)
         elif s.phase == "message":
             _text(img, s.message, cx, cy, 1.1 * k, GOOD if s.message_ok else WARN, 2)
@@ -122,13 +122,19 @@ class CalibrationOverlay:
             _text(img, s.message or "Calibration stopped", cx, cy, 1.4 * k, WARN, 2)
         elif step is not None:
             collecting = s.phase == "collect"
-            if step.kind in ("center", "gaze"):
-                tx, ty = TARGETS[step.direction]
+            if step.kind in ("center", "gaze", "lean"):
+                # Leaning keeps the eyes on the center dot.
+                tx, ty = TARGETS.get(step.direction, (0.0, 0.0))
                 px, py = cx + tx * cx, cy - ty * cy
                 self._target(img, px, py, now, collecting, s, step)
                 ty_text = cy + 170 * k if step.direction != "down" else cy - 170 * k
                 _text(img, step.title, cx, ty_text, 1.3 * k, FG, 2)
                 _text(img, step.hint, cx, ty_text + 50 * k, 0.8 * k, MUTED)
+                lean = s.live_lean() if step.kind == "lean" else None
+                if lean is not None:
+                    sign = 1 if step.direction == "in" else -1
+                    _text(img, f"{max(0.0, lean * sign):.0f} cm", cx, cy - 170 * k, 1.2 * k,
+                          GOOD if collecting else MUTED, 2)
             else:
                 self._head_step(img, s, step, collecting)
         return img
