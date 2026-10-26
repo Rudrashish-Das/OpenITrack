@@ -12,6 +12,7 @@ import io
 import json
 import logging
 import logging.handlers
+import math
 import os
 import queue
 import sys
@@ -69,6 +70,8 @@ ACTION_LABELS = dict(ACTIONS)
 COLORS = {"ok": "#3ecf8e", "warn": "#f2b84b", "bad": "#ef5d5d", "info": "#4c8dff", "idle": "#8b95a3"}
 AXIS_LIMITS = {"yaw": 180.0, "pitch": 90.0, "roll": 90.0, "x": 30.0, "y": 30.0, "z": 30.0}
 AXIS_UNITS = {"yaw": "°", "pitch": "°", "roll": "°", "x": " cm", "y": " cm", "z": " cm"}
+VIEW_BAR = 20   # half-length of the head-tilt bar in the "Where you're looking" box
+VIEW_TICK = 13  # the tick on it that points to the top of your head
 # Fits a 1080p laptop screen at 150% scaling (1280x720 usable, minus taskbar and
 # title bar), the smallest common setup. Everything fits down to about 917x616.
 WINDOW_SIZE = (940, 630)
@@ -608,7 +611,13 @@ class App:
         c.create_rectangle(x0, y0, x1, y1, outline="#57606a")
         c.create_line(cx, y0, cx, y1, fill="#2b2f36")
         c.create_line(x0, cy, x1, cy, fill="#2b2f36")
-        c.create_text(cx, h - 2, text="yaw ← →   pitch ↑ ↓", fill="#8b95a3", font=self.f_small, anchor="s")
+        c.create_text(cx, h - 2, text="yaw ← →   pitch ↑ ↓   roll ↺ ↻", fill="#8b95a3", font=self.f_small,
+                      anchor="s")
+        # The bar through the dot is the line between your eyes, so head tilt
+        # shows as the bar tilting while the dot stays put.
+        self._view_bar = c.create_line(cx - VIEW_BAR, cy, cx + VIEW_BAR, cy, fill=COLORS["info"], width=3,
+                                       capstyle="round")
+        self._view_tick = c.create_line(cx, cy, cx, cy - VIEW_TICK, fill=COLORS["info"], width=3, capstyle="round")
         self._view_dot = c.create_oval(cx - 7, cy - 7, cx + 7, cy + 7, fill=COLORS["info"], outline="")
         self._view_geom = (x0, y0, x1, y1)
         self._shown_pose = None
@@ -1611,11 +1620,16 @@ class App:
         if hasattr(self, "_view_geom"):
             x0, y0, x1, y1 = self._view_geom
             cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
-            yaw, pitch = pose[0], pose[1]
+            yaw, pitch, roll = pose[0], pose[1], pose[2]
             # Keep the whole dot (radius 7) inside the box at full deflection.
             x = cx - max(-1, min(1, yaw / 180)) * ((x1 - x0) / 2 - 7)  # + yaw = left
             y = cy - max(-1, min(1, pitch / 90)) * ((y1 - y0) / 2 - 7)
             self.view.coords(self._view_dot, x - 7, y - 7, x + 7, y + 7)
+            # + roll = tilt left: the bar turns counter-clockwise on screen (y grows down).
+            dx, dy = math.cos(math.radians(roll)), -math.sin(math.radians(roll))
+            self.view.coords(self._view_bar, x - dx * VIEW_BAR, y - dy * VIEW_BAR, x + dx * VIEW_BAR,
+                             y + dy * VIEW_BAR)
+            self.view.coords(self._view_tick, x, y, x + dy * VIEW_TICK, y - dx * VIEW_TICK)
 
     def _render_phone(self, phone: dict | None) -> None:
         if phone is None:
