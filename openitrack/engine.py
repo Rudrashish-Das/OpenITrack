@@ -3,7 +3,11 @@ live config reload, profile switching, preview and a one-line console status.
 
 The window (gui.py) runs the engine on a background thread: it sends commands
 through `Engine.command()` and reads `Engine.snapshot`, a plain dict replaced
-about ten times a second."""
+about ten times a second.
+
+Poses reach the game from a second thread at OUTPUT_HZ, gliding between the
+poses the tracking thread makes once per camera frame, so the view moves
+smoothly however slow or uneven the camera is."""
 
 from __future__ import annotations
 
@@ -19,7 +23,7 @@ from .config import ConfigError, ConfigFile
 from .foreground import foreground_app
 from .gaze_overlay import GazeDot
 from .hotkeys import HotkeyListener
-from .mapping import PosePipeline
+from .mapping import PoseGlide, PosePipeline
 from .model import ensure_model
 from .monitors import list_monitors, pick, use_physical_pixels
 from .outputs import Output, build_outputs
@@ -31,6 +35,7 @@ CALIBRATION_FILE = "calibration.json"
 RESULT_SCREEN_SECONDS = 2.5
 SNAPSHOT_INTERVAL = 0.1
 SENSITIVITY_LIMITS = (0.3, 3.0)
+OUTPUT_HZ = 120  # how often games get a pose; TrackIR itself runs at 120 Hz
 
 
 class Engine:
@@ -43,6 +48,10 @@ class Engine:
         self.pipeline = PosePipeline(self.cfg, self.calibration)
         self.sounds = Sounds(self.cfg.hotkeys.sounds)
         self.outputs: list[Output] = []
+        self._glide = PoseGlide(1.0 / self.cfg.source.fps)
+        self._out_lock = threading.Lock()  # guards _glide and outputs, shared with the output thread
+        self._out_stop = threading.Event()
+        self._out_thread: threading.Thread | None = None
         self.hotkeys: HotkeyListener | None = None
         self.source = None
         self.preview = None
@@ -306,9 +315,10 @@ class Engine:
         self.pipeline.set_config(self.cfg)
         self.sounds.enabled = self.cfg.hotkeys.sounds and sys.platform == "win32"
         if old.output != self.cfg.output:
-            for o in self.outputs:
-                o.close()
-            self.outputs = build_outputs(self.cfg.output)
+            with self._out_lock:
+                for o in self.outputs:
+                    o.close()
+                self.outputs = build_outputs(self.cfg.output)
         if old.overlay.enabled != self.cfg.overlay.enabled:
             self._dot_on = self.cfg.overlay.enabled
         if (old.overlay.size, old.calibration.monitor) != (self.cfg.overlay.size, self.cfg.calibration.monitor):
@@ -327,6 +337,8 @@ class Engine:
         model_path = ensure_model()
         self.source = self._make_source(model_path)
         self.outputs = build_outputs(self.cfg.output)
+        self._out_thread = threading.Thread(target=self._output_loop, daemon=True, name="output")
+        self._out_thread.start()
         self._bind_hotkeys()
         if self.calibration is not None:
             log.info("Loaded calibration from %s", self.calibration_path)
@@ -377,8 +389,8 @@ class Engine:
                 )
                 if not was_centered and self.pipeline.centered:
                     log.info("Face found, centered")
-                for out in self.outputs:
-                    out.send(pose)
+                with self._out_lock:
+                    self._glide.push(pose, now)
                 if sample.obs is not None:
                     frames += 1
 
@@ -406,6 +418,23 @@ class Engine:
                 sys.stdout.write("\n")
             self.close()
             self.snapshot = {**self.snapshot, "running": False, "status": "stopped"}
+
+    def _output_loop(self) -> None:
+        """Send the gliding pose to every output at a fixed rate."""
+        period = 1.0 / OUTPUT_HZ
+        due = time.monotonic()
+        while not self._out_stop.is_set():
+            now = time.monotonic()
+            with self._out_lock:
+                pose = self._glide.at(now)
+                for out in self.outputs:
+                    out.send(pose)
+            due += period
+            wait = due - time.monotonic()
+            if wait > 0:
+                time.sleep(wait)
+            elif wait < -period:
+                due = time.monotonic()  # fell behind (system stall): don't rush to catch up
 
     def _publish(self, status: str, fps: float, pose, held, face: bool) -> None:
         """Replace the snapshot the window reads (a new dict, so reads never tear)."""
@@ -480,6 +509,9 @@ class Engine:
     def close(self) -> None:
         if self.hotkeys:
             self.hotkeys.stop()
+        self._out_stop.set()
+        if self._out_thread is not None:
+            self._out_thread.join()
         for o in self.outputs:
             o.close()
         if self.overlay is not None:

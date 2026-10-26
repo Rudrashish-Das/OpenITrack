@@ -5,6 +5,7 @@ Head tracking plus eye-assisted view for flight, racing and space sims, using a 
 - **Webcam mode**: about 8 ms of CPU per frame (MediaPipe face mesh on the CPU). At 30 fps that's roughly a quarter of one core.
 - **Phone mode**: your phone does all the tracking in its browser and sends about 0.5 KB per frame over Wi‑Fi. PC cost is close to zero.
 - **6DOF head tracking** (yaw, pitch, roll, x, y, z) with TrackIR-style response curves.
+- **Smooth at any camera rate**: games get a pose 120 times a second, like TrackIR, gliding between camera frames, so a 30 fps (or uneven) camera doesn't make the view step.
 - **Eye-assist**: look toward the edge of the screen and the view turns further, like Tobii's extended view. A deadzone lets you glance at instruments without the camera moving, and blinks are ignored.
 - **Gaze dot** (optional): a click-through ring on screen showing roughly where you're looking.
 - **Guided calibration** (about 40 s) measures your eye range and comfortable head turn, so it fits you without hand-tuning.

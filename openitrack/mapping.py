@@ -82,6 +82,40 @@ def _smoothstep(k: float) -> float:
     return k * k * (3 - 2 * k)
 
 
+class PoseGlide:
+    """Turns the poses made once per camera frame into a smooth stream for an output
+    that runs faster than the camera. Each new pose is reached gradually over the time
+    the next one is expected to take, starting from wherever the output is now. Steady
+    motion then comes out at a steady speed, a late or early frame never makes a jump,
+    and it never overshoots. The cost is up to one camera frame of extra lag."""
+
+    MIN_INTERVAL = 1 / 240
+    MAX_INTERVAL = 0.1     # longer gaps are stalls, not the camera rate
+
+    def __init__(self, interval: float = 1 / 30):
+        self.interval = interval   # smoothed time between poses
+        self._from = Pose()
+        self._to = Pose()
+        self._t0: float | None = None
+
+    def push(self, pose: Pose, now: float) -> None:
+        if self._t0 is not None:
+            self._from = self.at(now)
+            gap = now - self._t0
+            if gap <= self.MAX_INTERVAL:
+                self.interval += 0.2 * (gap - self.interval)
+                self.interval = max(self.MIN_INTERVAL, min(self.MAX_INTERVAL, self.interval))
+        else:
+            self._from = pose
+        self._to, self._t0 = pose, now
+
+    def at(self, now: float) -> Pose:
+        if self._t0 is None:
+            return self._to
+        k = (now - self._t0) / self.interval
+        return self._to if k >= 1.0 else self._from.lerp(self._to, max(0.0, k))
+
+
 class PosePipeline:
     def __init__(self, config: Config, calibration: Calibration | None = None):
         self.config = config
