@@ -26,7 +26,7 @@ from tkinter import messagebox, simpledialog, ttk
 import sv_ttk
 
 from . import __version__
-from .config import ConfigError, ConfigFile, HotkeyConfig, default_config_path
+from .config import AXIS_SENSITIVITY_RANGE, ConfigError, ConfigFile, HotkeyConfig, default_config_path
 from .config_edit import set_value, set_values
 from .devices import DeviceStore
 from .foreground import running_apps
@@ -70,6 +70,9 @@ ACTION_LABELS = dict(ACTIONS)
 COLORS = {"ok": "#3ecf8e", "warn": "#f2b84b", "bad": "#ef5d5d", "info": "#4c8dff", "idle": "#8b95a3"}
 AXIS_LIMITS = {"yaw": 180.0, "pitch": 90.0, "roll": 90.0, "x": 30.0, "y": 30.0, "z": 30.0}
 AXIS_UNITS = {"yaw": "°", "pitch": "°", "roll": "°", "x": " cm", "y": " cm", "z": " cm"}
+# Settings tab sensitivity sliders: name -> the [axes.*] they set. Leaning is one
+# slider for x/y/z, so it shows the x value.
+AXIS_SENS_ROWS = {"Yaw": ("yaw",), "Pitch": ("pitch",), "Roll": ("roll",), "Leaning": ("x", "y", "z")}
 VIEW_BAR = 20   # half-length of the head-tilt bar in the "Where you're looking" box
 VIEW_TICK = 13  # the tick on it that points to the top of your head
 # Fits a 1080p laptop screen at 150% scaling (1280x720 usable, minus taskbar and
@@ -337,6 +340,8 @@ class App:
         self._sync_pause_until = 0.0
         self._last_pending: list = []
         self._shown_pose: tuple | None = None   # what the bars and view dot show now
+        self.sens_dialog: tk.Toplevel | None = None
+        self.axis_sens: dict[str, tuple[tk.DoubleVar, ttk.Label]] = {}  # its sliders, while open
         self._qr_url = ""
         self._cameras: list[tuple[int, int, int]] = []
         self._profiles: dict = {}
@@ -571,6 +576,7 @@ class App:
         self.sens_lbl = ttk.Label(row3, text="×1.00", width=6)
         self.sens_lbl.pack(side="left", padx=8)
         ttk.Button(row3, text="Reset", command=lambda: (self.sens_var.set(1.0), self.on_sensitivity())).pack(side="left")
+        ttk.Button(row3, text="Per axis…", command=self.open_axis_sensitivity).pack(side="left", padx=8)
 
         self.keys_hint = ttk.Label(t, text="", style="Muted.TLabel")
         self.keys_hint.grid(row=3, column=0, columnspan=2, sticky="w", pady=(6, 0))
@@ -1077,6 +1083,73 @@ class App:
         self._sync_pause_until = time.monotonic() + 0.6
         self.send(f"set_sensitivity:{v}")
 
+    def open_axis_sensitivity(self) -> None:
+        if self.sens_dialog is not None and self.sens_dialog.winfo_exists():
+            self.sens_dialog.lift()
+            return
+        top = tk.Toplevel(self.root)
+        top.title("Sensitivity per axis")
+        top.transient(self.root)
+        top.resizable(False, False)
+        frame = ttk.Frame(top, padding=18)
+        frame.pack(fill="both", expand=True)
+        frame.columnconfigure(1, weight=1)
+        ttk.Label(frame, text="How far the game view moves for each axis (×1 = as the response curves set it). "
+                  "Saved to the profile in use. The Sensitivity slider in the main window scales yaw, pitch "
+                  "and roll on top of this, for this session only.", style="Muted.TLabel", wraplength=380,
+                  justify="left").grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 10))
+        lo, hi = AXIS_SENSITIVITY_RANGE
+        for i, name in enumerate(AXIS_SENS_ROWS, start=1):
+            ttk.Label(frame, text=name).grid(row=i, column=0, sticky="w", pady=4)
+            var = tk.DoubleVar()
+            scale = ttk.Scale(frame, from_=lo, to=hi, variable=var, length=260,
+                              command=lambda v, n=name: self._show_axis_sens(n))
+            scale.grid(row=i, column=1, sticky="ew", padx=8)
+            # Saved when let go, not on every step of a drag.
+            for event in ("<ButtonRelease-1>", "<KeyRelease>"):
+                scale.bind(event, lambda e, n=name: self.save_axis_sensitivity(n))
+            lbl = ttk.Label(frame, text="", width=6)
+            lbl.grid(row=i, column=2, sticky="e")
+            self.axis_sens[name] = (var, lbl)
+        btns = ttk.Frame(frame)
+        btns.grid(row=len(AXIS_SENS_ROWS) + 1, column=0, columnspan=3, sticky="e", pady=(12, 0))
+
+        def close() -> None:
+            self.axis_sens = {}
+            top.destroy()
+        ttk.Button(btns, text="Reset all", command=self.reset_axis_sensitivity).pack(side="left")
+        ttk.Button(btns, text="Close", style="Accent.TButton", command=close).pack(side="left", padx=(8, 0))
+        top.protocol("WM_DELETE_WINDOW", close)
+        self.sens_dialog = top
+        self._show_axis_sensitivity()
+
+    def _axis_sens_value(self, name: str) -> float:
+        return round(self.axis_sens[name][0].get() * 20) / 20  # steps of 0.05
+
+    def _show_axis_sens(self, name: str) -> None:
+        self.axis_sens[name][1].configure(text=f"×{self._axis_sens_value(name):.2f}")
+
+    def save_axis_sensitivity(self, name: str) -> None:
+        v = self._axis_sens_value(name)
+        axes = AXIS_SENS_ROWS[name]
+        if all(getattr(self.cf.config.axes, a).sensitivity == v for a in axes):
+            return
+        for a in axes:
+            if not self.save(f"axes.{a}", {"sensitivity": v}):
+                break
+        self._show_axis_sensitivity()
+
+    def reset_axis_sensitivity(self) -> None:
+        for name, (var, _) in self.axis_sens.items():
+            var.set(1.0)
+            self.save_axis_sensitivity(name)
+
+    def _show_axis_sensitivity(self) -> None:
+        """Sliders show what's saved (for the profile in use)."""
+        for name, (var, _) in self.axis_sens.items():
+            var.set(getattr(self.cf.config.axes, AXIS_SENS_ROWS[name][0]).sensitivity)
+            self._show_axis_sens(name)
+
     def reset_calibration(self) -> None:
         path = self.config_dir / CALIBRATION_FILE
         if not path.exists():
@@ -1165,15 +1238,16 @@ class App:
         self.gaze_cfg_var.set(c.gaze.enabled)
         self.dot_cfg_var.set(c.overlay.enabled)
         self.blendshapes_var.set(self.cf.base.tracking.blendshapes)
+        self._show_axis_sensitivity()
         self._update_settings_note()
         self.refresh_profiles()
 
     def _update_settings_note(self) -> None:
         if self.cf.profile:
-            text = (f"Outputs and eye-assist are saved to the profile “{self.cf.profile}”. "
+            text = (f"Outputs, sensitivity and eye-assist are saved to the profile “{self.cf.profile}”. "
                     "Everything else applies to every profile.")
         else:
-            text = "Using Default. Outputs and eye-assist can also be set per game: see the Profiles tab."
+            text = "Using Default. Outputs, sensitivity and eye-assist can also be set per game: see the Profiles tab."
         self.settings_note.configure(text=text)
 
     def select_profile(self, name: str) -> None:

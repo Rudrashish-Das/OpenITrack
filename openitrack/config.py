@@ -67,6 +67,8 @@ blink_threshold = 0.45    # eyes closed above this: gaze is held, not updated
 #   deadzone:    movement ignored around center (same units as input)
 #   exponent:    1 = linear, >1 = precise near center, fast at the edges
 #   invert:      flip the direction if an axis moves the wrong way in game
+#   sensitivity: multiplies the in-game movement (1 = as set above, 2 = twice as far;
+#                the window's Settings tab has a slider for it)
 [axes.yaw]
 enabled = true
 input_range = 35.0
@@ -74,6 +76,7 @@ output = 160.0
 deadzone = 0.5
 exponent = 1.6
 invert = false
+sensitivity = 1.0
 
 [axes.pitch]
 enabled = true
@@ -82,6 +85,7 @@ output = 90.0
 deadzone = 0.5
 exponent = 1.6
 invert = false
+sensitivity = 1.0
 
 [axes.roll]
 enabled = true
@@ -90,6 +94,7 @@ output = 30.0
 deadzone = 1.0
 exponent = 1.0
 invert = false
+sensitivity = 1.0
 
 [axes.x]
 enabled = true
@@ -98,6 +103,7 @@ output = 25.0
 deadzone = 0.3
 exponent = 1.0
 invert = false
+sensitivity = 1.0
 
 [axes.y]
 enabled = true
@@ -106,6 +112,7 @@ output = 15.0
 deadzone = 0.3
 exponent = 1.0
 invert = false
+sensitivity = 1.0
 
 [axes.z]
 enabled = true
@@ -114,6 +121,7 @@ output = 25.0
 deadzone = 0.5
 exponent = 1.0
 invert = false
+sensitivity = 1.0
 
 [output]
 # How TrackIR / FreeTrack games (MSFS, DCS, X-Plane, IL-2, iRacing...) get the pose:
@@ -198,6 +206,8 @@ setup_done = false     # false = show the step-by-step setup when the window ope
 CAMERA_FORMATS = {"mjpg": "MJPG", "yuy2": "YUY2", "auto": None}
 # [output] game: how TrackIR / FreeTrack games get the pose.
 GAME_OUTPUTS = ("direct", "opentrack", "off")
+# [axes.*] sensitivity: what the per-axis sliders offer.
+AXIS_SENSITIVITY_RANGE = (0.1, 5.0)
 
 
 @dataclass
@@ -251,6 +261,7 @@ class AxisConfig:
     deadzone: float = 0.5
     exponent: float = 1.0
     invert: bool = False
+    sensitivity: float = 1.0
 
 
 def _axis(**kw: Any) -> Any:
@@ -402,6 +413,9 @@ def _validate(cfg: Config) -> None:
             raise ConfigError(f"axes.{f.name}.input_range must be larger than its deadzone")
         if ax.exponent <= 0:
             raise ConfigError(f"axes.{f.name}.exponent must be positive")
+        lo, hi = AXIS_SENSITIVITY_RANGE
+        if not lo <= ax.sensitivity <= hi:
+            raise ConfigError(f"axes.{f.name}.sensitivity must be between {lo} and {hi}")
     if not 0 <= cfg.gaze.deadzone < 1:
         raise ConfigError("gaze.deadzone must be in [0, 1)")
     if cfg.gaze.horizontal_range <= 0 or cfg.gaze.vertical_range <= 0:

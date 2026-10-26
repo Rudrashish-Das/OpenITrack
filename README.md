@@ -124,7 +124,7 @@ Shortcuts work while any app or game has focus. Every default needs at least two
 | **Ctrl+Shift+F10** | Pause / resume (the view glides to center and stays) |
 | **Ctrl+Shift+F11** | Eye-assist on/off |
 | **Ctrl+Shift+F8** | Position tracking (lean x/y/z) on/off |
-| **Ctrl+Shift+PageUp / PageDown** | Rotation sensitivity ×1.1 / ÷1.1 (this session) |
+| **Ctrl+Shift+PageUp / PageDown** | Rotation sensitivity ×1.1 / ÷1.1 (this session; for a saved, per-axis setting use **Per axis…** next to the Sensitivity slider) |
 | **Ctrl+Alt+Shift+F9** | Start or cancel calibration |
 | **Ctrl+Alt+Shift+F10** | Show/hide the tuning window |
 | **Ctrl+Alt+Shift+F11** | Gaze dot on/off (this session) |
@@ -196,7 +196,7 @@ A flight sim and a racing sim rarely want the same curves. A **profile** gives o
 
 In the window, open the **Profiles** tab, click **New…** and name it after the game. Under *Switch to it when this is in front*, add the game's program: start the game, then pick it from the list, or type its file name (e.g. `DCS.exe`, `FlightSimulator.exe`). From then on, OpenITrack switches to that profile within a second of the game coming to the front, with a short beep. Switching to a program without a profile (the desktop, a browser, this window) keeps the current one, so alt-tabbing doesn't change anything. You can also pick a profile by hand from the **Profile** list at the top of the window.
 
-While a profile is in use, changes in the window's Settings tab (outputs, eye-assist) are saved to that profile. For curves and filtering, click **Edit file**. A new profile lists every setting it can change with your current Default value, all commented out:
+While a profile is in use, changes in the window's Settings tab (outputs, eye-assist) and the per-axis sensitivity sliders are saved to that profile. For curves and filtering, click **Edit file**. A new profile lists every setting it can change with your current Default value, all commented out:
 
 ```toml
 [profile]

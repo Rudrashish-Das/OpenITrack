@@ -250,6 +250,21 @@ def test_sensitivity_scales_rotation():
     assert boosted.yaw == pytest.approx(base.yaw * 1.1, rel=0.01)
 
 
+def test_per_axis_sensitivity_scales_only_its_axis():
+    cfg = Config()
+    cfg.gaze.enabled = False
+    p, t = centered_pipeline(cfg)
+    base, t = settle(p, t, 90, yaw=10, pitch=5)
+    cfg.axes.yaw.sensitivity = 2.0
+    p.set_config(cfg)
+    boosted, t = settle(p, t, 30, yaw=10, pitch=5)
+    assert boosted.yaw == pytest.approx(base.yaw * 2.0, rel=0.01)
+    assert boosted.pitch == pytest.approx(base.pitch, rel=0.01)
+    p.change_sensitivity(True)  # the session-wide one multiplies on top
+    both, t = settle(p, t, 30, yaw=10, pitch=5)
+    assert both.yaw == pytest.approx(base.yaw * 2.2, rel=0.01)
+
+
 # -- bindings ------------------------------------------------------------------------
 
 def test_parse_bindings():

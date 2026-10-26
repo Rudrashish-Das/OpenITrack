@@ -302,14 +302,16 @@ class PosePipeline:
         return Pose(**out)
 
     def _modifiers(self, pose: Pose, dt: float) -> Pose:
-        """Sensitivity, smooth axis toggles and physical limits."""
+        """Sensitivity (per axis and session-wide), smooth axis toggles and physical limits."""
         step = dt / _TOGGLE_SECONDS
         for name, on in (("translation", self.translation_enabled), ("roll", self.roll_enabled)):
             w = self._weights[name]
             self._weights[name] = min(1.0, w + step) if on else max(0.0, w - step)
         wt, wr = _smoothstep(self._weights["translation"]), _smoothstep(self._weights["roll"])
-        s = self.sensitivity
-        out = Pose(pose.yaw * s, pose.pitch * s, pose.roll * s * wr, pose.x * wt, pose.y * wt, pose.z * wt)
+        s = self.sensitivity  # the session-wide one, for rotation
+        k = {a: self._axes[a].sensitivity for a in AXES}
+        out = Pose(pose.yaw * s * k["yaw"], pose.pitch * s * k["pitch"], pose.roll * s * k["roll"] * wr,
+                   pose.x * k["x"] * wt, pose.y * k["y"] * wt, pose.z * k["z"] * wt)
         # Head + eye-assist must not pass the physical limits: yaw beyond ±180
         # would wrap the view to the opposite side in game.
         for axis, limit in _ROTATION_LIMITS.items():
